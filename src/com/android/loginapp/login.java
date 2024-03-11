@@ -17,6 +17,9 @@ import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.Toast;
+
+
+import okhttp3.OkHttpClient;
 /**
  * The main application activity which serves as a login page. 
  * @author Andrei
@@ -141,6 +144,7 @@ public class login extends Activity {
      */
     private void LogMeIn(View v) {
     	//Get the username and password
+		boolean loginsuccess = false;
     	String thisUsername = theUsername.getText().toString();
     	String thisPassword = thePassword.getText().toString();
     	
@@ -157,6 +161,7 @@ public class login extends Activity {
     		    theUser.close();
     		    Intent i = new Intent(v.getContext(), Helloworld.class);
     		    startActivity(i);
+				loginsuccess = true;
     		}
     		
     		//Returns appropriate message if no match is made
@@ -175,7 +180,52 @@ public class login extends Activity {
     				"Database query error", 
     				Toast.LENGTH_SHORT).show();
     	}
+
+		if (loginsuccess == false){
+			performNetworkLogin(thisUsername, thisPassword);
+		}
     }
+
+
+	private void performNetworkLogin(String username, String password) {
+		new AsyncTask<Void, Void, Boolean>() {
+			@Override
+			protected Boolean doInBackground(Void... voids) {
+				try {
+					OkHttpClient client = HttpsClient.getHttpsClient(getApplicationContext());
+					RequestBody formBody = new FormBody.Builder()
+							.add("username", username)
+							.add("password", password)
+							.build();
+					Request request = new Request.Builder()
+							.url("https://run.mocky.io/v3/e7b8927b-eafc-42a1-a75f-f4f5b7650463")
+							.post(formBody)
+							.build();
+					
+					Response response = client.newCall(request).execute();
+					// Assuming the server response includes a boolean indicating success
+					return response.isSuccessful() && Boolean.parseBoolean(response.body().string());
+				} catch (Exception e) {
+					Log.e("LogMeIn", "Error verifying credentials over network", e);
+					Log.e("LogMeIn", "Response message" + response.body().string());
+					return false;
+				}
+			}
+
+			@Override
+			protected void onPostExecute(Boolean success) {
+				if (success) {
+					// If network verification successful, proceed with login
+					saveLoggedInUId(1, username, password); // Assuming a temporary user ID of 1
+					Intent i = new Intent(getApplicationContext(), Helloworld.class);
+					startActivity(i);
+				} else {
+					// If network verification fails, show error message
+					Toast.makeText(getApplicationContext(), "You have entered an incorrect username or password.", Toast.LENGTH_SHORT).show();
+				}
+			}
+		}.execute();
+	}
     
     /**
      * Open the Registration activity.

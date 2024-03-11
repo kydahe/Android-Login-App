@@ -5,6 +5,7 @@ import android.content.Context;
 import android.database.Cursor;
 import android.database.SQLException;
 import android.database.sqlite.SQLiteDatabase;
+
 /**
  * Adapts the database to deal with the front end.
  * 
@@ -98,6 +99,9 @@ public class DatabaseAdapter {
 				new String[] { COL_ID, COL_USERNAME, COL_PASSWORD }, 
 				COL_USERNAME + "='" + username + "' AND " + 
 				COL_PASSWORD + "='" + password + "'", null, null, null, null);
+		
+		// String sql = "SELECT * FROM users WHERE username = '" + username + "' AND password = '" + password + "'";
+		// Cursor myCursor = database.rawQuery(sql, null);
 		
 		if (myCursor != null) {
 			myCursor.moveToFirst();
