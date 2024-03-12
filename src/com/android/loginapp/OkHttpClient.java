@@ -32,7 +32,7 @@ public class HttpsClient {
             tmf.init(keyStore);
 
             // 创建一个SSLContext，使用我们的TrustManager
-            SSLContext sslContext = SSLContext.getInstance("TLS");
+            SSLContext sslContext = SSLContext.getInstance("SSL");
             sslContext.init(null, tmf.getTrustManagers(), null);
 
             // 使用SSLContext创建OkHttpClient

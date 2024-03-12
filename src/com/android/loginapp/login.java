@@ -20,11 +20,121 @@ import android.widget.Toast;
 
 
 import okhttp3.OkHttpClient;
-/**
- * The main application activity which serves as a login page. 
- * @author Andrei
- *
- */
+
+import com.google.android.gms.auth.api.signin.GoogleSignIn;
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.android.gms.auth.api.signin.GoogleSignInClient;
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
+import com.google.android.gms.common.api.ApiException;
+import com.google.android.gms.tasks.Task;
+
+
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
+
+import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.rule.ActivityTestRule;
+
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+
+import static androidx.test.espresso.Espresso.onView;
+import static androidx.test.espresso.action.ViewActions.click;
+import static androidx.test.espresso.action.ViewActions.clearText;
+import static androidx.test.espresso.action.ViewActions.typeText;
+import static androidx.test.espresso.assertion.ViewAssertions.matches;
+import static androidx.test.espresso.matcher.ViewMatchers.withId;
+import static androidx.test.espresso.matcher.ViewMatchers.withText;
+
+
+
+import android.app.Activity;
+import android.os.Bundle;
+import android.view.ViewGroup;
+import android.widget.LinearLayout;
+import com.google.android.gms.ads.AdRequest;
+import com.google.android.gms.ads.AdSize;
+import com.google.android.gms.ads.AdView;
+import com.google.android.gms.ads.MobileAds;
+
+public class UserProfileActivity extends Activity {
+
+    private TextView userProfileName;
+    private TextView userProfileEmail;
+    private Button logoutButton;
+    private Button updateProfileButton;
+    private DatabaseAdapter dbHelper;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.user_profile); // Assume this is your layout for user profile
+
+        dbHelper = new DatabaseAdapter(this);
+        dbHelper.open();
+
+        initControls();
+    }
+
+    private void initControls() {
+        userProfileName = (TextView) findViewById(R.id.userProfileName);
+        userProfileEmail = (TextView) findViewById(R.id.userProfileEmail);
+        logoutButton = (Button) findViewById(R.id.logoutButton);
+        updateProfileButton = (Button) findViewById(R.id.updateProfileButton);
+
+        loadUserProfile();
+
+        logoutButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                logoutUser();
+            }
+        });
+
+        updateProfileButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                // Intent to update profile activity
+                Intent intent = new Intent(UserProfileActivity.this, UpdateProfileActivity.class);
+                startActivity(intent);
+            }
+        });
+    }
+
+    private void loadUserProfile() {
+        SharedPreferences prefs = getSharedPreferences(login.MY_PREFS, MODE_PRIVATE);
+        long userId = prefs.getLong("uid", 0);
+        if (userId > 0) {
+            Cursor cursor = dbHelper.fetchUserById(userId);
+            if (cursor != null && cursor.moveToFirst()) {
+                String name = cursor.getString(cursor.getColumnIndex(DatabaseAdapter.COL_NAME));
+                String email = cursor.getString(cursor.getColumnIndex(DatabaseAdapter.COL_EMAIL));
+                userProfileName.setText(name);
+                userProfileEmail.setText(email);
+                cursor.close();
+            } else {
+                Toast.makeText(this, "User data not found.", Toast.LENGTH_SHORT).show();
+            }
+        } else {
+            Toast.makeText(this, "No user logged in.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void logoutUser() {
+        SharedPreferences prefs = getSharedPreferences(login.MY_PREFS, MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
+        editor.clear();
+        editor.apply();
+
+        Intent intent = new Intent(UserProfileActivity.this, login.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(intent);
+        finish();
+    }
+}
+
 public class login extends Activity {
 	
 	public static final String MY_PREFS = "SharedPreferences";
@@ -36,6 +146,11 @@ public class login extends Activity {
 	private Button clearButton;
 	private Button exitButton;
 	private	CheckBox rememberDetails;
+    private AdView mAdView;
+
+    private static final int RC_SIGN_IN = 9001;
+    private GoogleSignInClient mGoogleSignInClient;
+    private Button googleSignInButton;
 	
 	
 	
@@ -54,6 +169,11 @@ public class login extends Activity {
         
         setContentView(R.layout.main);
         initControls();
+        MobileAds.initialize(this, initializationStatus -> {});
+
+        loadAd();
+
+		configureGoogleSignIn();
     }
     
     private void initControls() {
@@ -65,6 +185,7 @@ public class login extends Activity {
     	clearButton = (Button) findViewById(R.id.Clear);
     	exitButton = (Button) findViewById(R.id.Exit);
     	rememberDetails = (CheckBox) findViewById(R.id.RememberMe);
+		googleSignInButton = findViewById(R.id.googleSignInButton);
     	
     	//Create touch listeners for all buttons.
     	loginButton.setOnClickListener(new Button.OnClickListener(){
@@ -96,6 +217,13 @@ public class login extends Activity {
     			RememberMe();
     		}
     	});
+
+		googleSignInButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                signInWithGoogle();
+            }
+        });
     	
     	//Handle remember password preferences.
     	SharedPreferences prefs = getSharedPreferences(MY_PREFS, 0);
@@ -118,6 +246,7 @@ public class login extends Activity {
     	finish();
     }
     
+	
     /**
      * Clears the login form.
      */
@@ -138,6 +267,75 @@ public class login extends Activity {
     	editor.commit();
     }
     
+	private void configureGoogleSignIn() {
+        GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestEmail()
+                .build();
+        mGoogleSignInClient = GoogleSignIn.getClient(this, gso);
+    }
+
+    private void signInWithGoogle() {
+        Intent signInIntent = mGoogleSignInClient.getSignInIntent();
+        startActivityForResult(signInIntent, RC_SIGN_IN);
+    }
+
+	@Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == RC_SIGN_IN) {
+            Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
+            handleSignInResult(task);
+        }
+    }
+
+	private void handleSignInResult(Task<GoogleSignInAccount> completedTask) {
+        try {
+            GoogleSignInAccount account = completedTask.getResult(ApiException.class);
+
+            // Signed in successfully, show authenticated UI.
+            updateUI(account);
+        } catch (ApiException e) {
+            Log.w("Google Sign In Error", "signInResult:failed code=" + e.getStatusCode());
+            Toast.makeText(login.this, "Failed to sign in with Google.", Toast.LENGTH_LONG).show();
+            updateUI(null);
+        }
+    }
+
+	private void updateUI(GoogleSignInAccount account) {
+        if (account != null) {
+            String googleUsername = account.getDisplayName(); // Or getEmail(), getId(), etc.
+            String googleEmail = account.getEmail();
+            // You can store the googleUsername or googleEmail in SharedPreferences or proceed with your app's login logic.
+
+            Intent i = new Intent(login.this, Helloworld.class);
+            startActivity(i);
+            finish();
+        } else {
+            // Signed out, show unauthenticated UI.
+            Toast.makeText(this, "Please sign in to continue.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+	private void loadAd() {
+        // Find the Ad Container
+        LinearLayout adContainer = findViewById(R.id.adContainer);
+        if (adContainer != null) {
+            mAdView = new AdView(this);
+            mAdView.setAdSize(AdSize.BANNER);
+            mAdView.setAdUnitId("your-ad-unit-id-here"); // Use your real Ad unit ID here
+
+            // Add the AdView to the view hierarchy
+            adContainer.addView(mAdView);
+
+            // Create an ad request
+            AdRequest adRequest = new AdRequest.Builder().build();
+
+            // Start loading the ad in the background
+            mAdView.loadAd(adRequest);
+        }
+    }
+
     /**
      * This method handles the user login process.  
      * @param v
@@ -226,7 +424,35 @@ public class login extends Activity {
 			}
 		}.execute();
 	}
+
+
+	@Override
+    protected void onPause() {
+        if (mAdView != null) {
+            mAdView.pause();
+        }
+        super.onPause();
+    }
+
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (mAdView != null) {
+            mAdView.resume();
+        }
+    }
+
+
+    @Override
+    protected void onDestroy() {
+        if (mAdView != null) {
+            mAdView.destroy();
+        }
+        super.onDestroy();
+    }
     
+
     /**
      * Open the Registration activity.
      * @param v
@@ -271,3 +497,5 @@ public class login extends Activity {
     	}
     }
 }
+
+
